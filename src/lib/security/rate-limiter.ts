@@ -28,7 +28,7 @@ function cleanup(windowMs: number): void {
   if (now - lastCleanup < CLEANUP_INTERVAL) return
   lastCleanup = now
 
-  for (const [key, entry] of store.entries()) {
+  for (const [key, entry] of Array.from(store.entries())) {
     if (now - entry.lastRefill > windowMs * 2) {
       store.delete(key)
     }

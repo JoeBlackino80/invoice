@@ -1,22 +1,9 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
-import { createAdminClient } from "@/lib/supabase/admin"
+import { apiHandler } from "@/lib/api/handler"
 import { invoiceSchema } from "@/lib/validations/invoice"
 
 // GET /api/invoices/:id
-export async function GET(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
-    return NextResponse.json({ error: "Neautorizovaný prístup" }, { status: 401 })
-  }
-
-  const db = createAdminClient()
-
+export const GET = apiHandler(async (request, { db, log, params }) => {
   const { data, error } = await db
     .from("invoices")
     .select(`
@@ -38,26 +25,15 @@ export async function GET(
     .single()
 
   if (error) {
+    log.error("Failed to fetch invoice", error)
     return NextResponse.json({ error: error.message }, { status: 404 })
   }
 
   return NextResponse.json(data)
-}
+})
 
 // PUT /api/invoices/:id
-export async function PUT(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
-    return NextResponse.json({ error: "Neautorizovaný prístup" }, { status: 401 })
-  }
-
-  const db = createAdminClient()
-
+export const PUT = apiHandler(async (request, { user, db, log, params }) => {
   // Check if invoice exists and is in draft status
   const { data: existingInvoice, error: fetchError } = await db
     .from("invoices")
@@ -107,6 +83,7 @@ export async function PUT(
     .single() as { data: any; error: any }
 
   if (updateError) {
+    log.error("Failed to update invoice", updateError)
     return NextResponse.json({ error: updateError.message }, { status: 500 })
   }
 
@@ -117,6 +94,7 @@ export async function PUT(
     .eq("invoice_id", params.id)
 
   if (deleteItemsError) {
+    log.error("Failed to delete invoice items", deleteItemsError)
     return NextResponse.json({ error: deleteItemsError.message }, { status: 500 })
   }
 
@@ -150,6 +128,7 @@ export async function PUT(
     .select()
 
   if (itemsError) {
+    log.error("Failed to create invoice items", itemsError)
     return NextResponse.json({ error: itemsError.message }, { status: 500 })
   }
 
@@ -158,22 +137,10 @@ export async function PUT(
     ...updatedInvoice,
     items: insertedItems,
   })
-}
+})
 
 // DELETE /api/invoices/:id (soft delete)
-export async function DELETE(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
-    return NextResponse.json({ error: "Neautorizovaný prístup" }, { status: 401 })
-  }
-
-  const db = createAdminClient()
-
+export const DELETE = apiHandler(async (request, { db, log, params }) => {
   // Check if invoice exists and is in draft status
   const { data: existingInvoice, error: fetchError } = await db
     .from("invoices")
@@ -198,8 +165,9 @@ export async function DELETE(
     .eq("id", params.id)
 
   if (error) {
+    log.error("Failed to delete invoice", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
   return NextResponse.json({ success: true })
-}
+})

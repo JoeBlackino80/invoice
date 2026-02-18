@@ -10,6 +10,7 @@ export interface Company {
   business_type: string
   accounting_type: string
   is_vat_payer: boolean
+  vat_period: "mesacne" | "stvrtrocne" | null
   logo_url: string | null
 }
 

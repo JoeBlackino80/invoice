@@ -72,7 +72,7 @@ function formatDate(dateStr: string) {
 }
 
 export default function DPHPage() {
-  const { activeCompanyId } = useCompany()
+  const { activeCompanyId, activeCompany } = useCompany()
   const { toast } = useToast()
 
   // Period selector state
@@ -303,7 +303,8 @@ export default function DPHPage() {
   }
 
   // DPH deadline banner
-  const deadline = calculateNextDPHDeadline("mesacne") // TODO: get from company settings
+  const vatPeriod = activeCompany?.vat_period || "mesacne"
+  const deadline = calculateNextDPHDeadline(vatPeriod)
 
   const deadlineColors = {
     ok: "bg-green-50 border-green-200 text-green-700 dark:bg-green-950/20 dark:border-green-800 dark:text-green-400",

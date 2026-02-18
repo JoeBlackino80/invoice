@@ -1,19 +1,9 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
-import { createAdminClient } from "@/lib/supabase/admin"
+import { apiHandler } from "@/lib/api/handler"
 import { invoiceSchema } from "@/lib/validations/invoice"
 
 // GET /api/invoices - zoznam faktúr
-export async function GET(request: Request) {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
-    return NextResponse.json({ error: "Neautorizovaný prístup" }, { status: 401 })
-  }
-
-  const db = createAdminClient()
-
+export const GET = apiHandler(async (request, { user, db, log }) => {
   const { searchParams } = new URL(request.url)
   const companyId = searchParams.get("company_id")
   const type = searchParams.get("type")
@@ -75,6 +65,7 @@ export async function GET(request: Request) {
   const { data, error, count } = await query
 
   if (error) {
+    log.error("Failed to fetch invoices", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
@@ -115,19 +106,10 @@ export async function GET(request: Request) {
     },
     summary,
   })
-}
+})
 
 // POST /api/invoices - vytvorenie faktúry
-export async function POST(request: Request) {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
-    return NextResponse.json({ error: "Neautorizovaný prístup" }, { status: 401 })
-  }
-
-  const db = createAdminClient()
-
+export const POST = apiHandler(async (request, { user, db, log }) => {
   const body = await request.json()
   const { company_id, ...invoiceData } = body
 
@@ -171,6 +153,7 @@ export async function POST(request: Request) {
     })
 
   if (numberError) {
+    log.error("Failed to generate invoice number", numberError)
     return NextResponse.json({ error: numberError.message }, { status: 500 })
   }
 
@@ -200,6 +183,7 @@ export async function POST(request: Request) {
     .single() as { data: any; error: any }
 
   if (invoiceError) {
+    log.error("Failed to create invoice", invoiceError)
     return NextResponse.json({ error: invoiceError.message }, { status: 500 })
   }
 
@@ -222,14 +206,14 @@ export async function POST(request: Request) {
     .select()
 
   if (itemsError) {
+    log.error("Failed to create invoice items, rolling back", itemsError)
     // Rollback: delete the invoice
     await (db.from("invoices") as any).delete().eq("id", invoice.id)
     return NextResponse.json({ error: itemsError.message }, { status: 500 })
   }
 
-  // Return created invoice with items
   return NextResponse.json({
     ...invoice,
     items: insertedItems,
   }, { status: 201 })
-}
+})

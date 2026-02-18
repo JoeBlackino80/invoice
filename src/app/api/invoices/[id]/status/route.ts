@@ -1,21 +1,8 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
-import { createAdminClient } from "@/lib/supabase/admin"
+import { apiHandler } from "@/lib/api/handler"
 
 // PUT /api/invoices/:id/status - zmena stavu faktúry
-export async function PUT(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
-    return NextResponse.json({ error: "Neautorizovaný prístup" }, { status: 401 })
-  }
-
-  const db = createAdminClient()
-
+export const PUT = apiHandler(async (request, { user, db, log, params }) => {
   const body = await request.json()
   const { status } = body
 
@@ -61,8 +48,9 @@ export async function PUT(
     .single()
 
   if (error) {
+    log.error("Failed to update invoice status", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
   return NextResponse.json(data)
-}
+})

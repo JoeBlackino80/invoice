@@ -1,5 +1,6 @@
 import { generatePayBySquareQR, generatePayBySquareString } from "@/lib/pay-by-square"
 import type { PayBySquareData } from "@/lib/pay-by-square"
+import { getStripe, isStripeConfigured } from "./stripe-client"
 
 // ---------- Interfaces ----------
 
@@ -55,7 +56,7 @@ export interface MatchResult {
   invoice_status: string
 }
 
-// ---------- Stripe Integration (Prepared / Simulated) ----------
+// ---------- Stripe Integration ----------
 
 export async function createStripePaymentIntent(
   amount: number,
@@ -63,13 +64,29 @@ export async function createStripePaymentIntent(
   invoiceId: string,
   companyId: string
 ): Promise<PaymentIntent> {
-  // Simulated Stripe PaymentIntent creation
-  // In production, this would call Stripe API:
-  // const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!)
-  // const intent = await stripe.paymentIntents.create({ amount, currency, metadata: { invoiceId, companyId } })
+  const stripe = getStripe()
 
+  if (stripe) {
+    // Real Stripe integration
+    const intent = await stripe.paymentIntents.create({
+      amount, // already in cents from caller
+      currency: currency.toLowerCase(),
+      metadata: { invoice_id: invoiceId, company_id: companyId },
+      automatic_payment_methods: { enabled: true },
+    })
+
+    return {
+      id: intent.id,
+      client_secret: intent.client_secret!,
+      amount: intent.amount,
+      currency: intent.currency,
+      status: intent.status,
+      payment_url: null, // client-side handles via Stripe Elements
+    }
+  }
+
+  // Simulation fallback when STRIPE_SECRET_KEY not set
   const simulatedId = `pi_simulated_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`
-
   return {
     id: simulatedId,
     client_secret: `${simulatedId}_secret_${Math.random().toString(36).substring(2, 12)}`,
@@ -80,13 +97,84 @@ export async function createStripePaymentIntent(
   }
 }
 
+/**
+ * Create a Stripe Checkout Session for hosted payment page.
+ */
+export async function createStripeCheckoutSession(
+  amount: number,
+  currency: string,
+  invoiceId: string,
+  invoiceNumber: string,
+  companyId: string,
+  successUrl: string,
+  cancelUrl: string
+): Promise<{ url: string | null; sessionId: string }> {
+  const stripe = getStripe()
+
+  if (stripe) {
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          price_data: {
+            currency: currency.toLowerCase(),
+            product_data: {
+              name: `Faktúra ${invoiceNumber}`,
+              description: `Úhrada faktúry ${invoiceNumber}`,
+            },
+            unit_amount: amount,
+          },
+          quantity: 1,
+        },
+      ],
+      mode: "payment",
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      metadata: { invoice_id: invoiceId, company_id: companyId },
+    })
+
+    return { url: session.url, sessionId: session.id }
+  }
+
+  // Simulation fallback
+  return {
+    url: `${successUrl}?simulated=true`,
+    sessionId: `cs_simulated_${Date.now()}`,
+  }
+}
+
+/**
+ * Verify and construct a Stripe webhook event.
+ * Returns null if signature is invalid.
+ */
+export async function verifyStripeWebhook(
+  body: string,
+  signature: string | null
+): Promise<{ type: string; data: { object: Record<string, any> } } | null> {
+  const stripe = getStripe()
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
+
+  if (stripe && webhookSecret && signature) {
+    try {
+      const event = stripe.webhooks.constructEvent(body, signature, webhookSecret)
+      return { type: event.type, data: event.data as any }
+    } catch {
+      return null
+    }
+  }
+
+  // Fallback: trust the body (for simulation / dev)
+  try {
+    return JSON.parse(body)
+  } catch {
+    return null
+  }
+}
+
 export async function handleStripeWebhook(event: {
   type: string
   data: { object: Record<string, any> }
 }): Promise<WebhookResult> {
-  // Simulated Stripe webhook processing
-  // In production, this would verify the webhook signature and process the event
-
   if (event.type === "payment_intent.succeeded") {
     const paymentIntent = event.data.object
     return {
@@ -104,6 +192,16 @@ export async function handleStripeWebhook(event: {
       payment_id: paymentIntent.id as string || null,
       invoice_id: (paymentIntent.metadata?.invoice_id as string) || null,
       status: "failed",
+    }
+  }
+
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object
+    return {
+      success: true,
+      payment_id: session.payment_intent as string || session.id as string || null,
+      invoice_id: (session.metadata?.invoice_id as string) || null,
+      status: "completed",
     }
   }
 

@@ -1,19 +1,9 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
-import { createAdminClient } from "@/lib/supabase/admin"
+import { apiHandler } from "@/lib/api/handler"
 import { bankAccountSchema } from "@/lib/validations/bank"
 
 // GET /api/bank-accounts - zoznam bankovych uctov
-export async function GET(request: Request) {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
-    return NextResponse.json({ error: "Neautorizovany pristup" }, { status: 401 })
-  }
-
-  const db = createAdminClient()
-
+export const GET = apiHandler(async (request, { db, log }) => {
   const { searchParams } = new URL(request.url)
   const companyId = searchParams.get("company_id")
 
@@ -28,6 +18,7 @@ export async function GET(request: Request) {
     .order("name")
 
   if (error) {
+    log.error("Failed to fetch bank accounts", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
@@ -62,19 +53,10 @@ export async function GET(request: Request) {
   )
 
   return NextResponse.json({ data: accountsWithBalance })
-}
+})
 
 // POST /api/bank-accounts - vytvorenie bankoveho uctu
-export async function POST(request: Request) {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
-    return NextResponse.json({ error: "Neautorizovany pristup" }, { status: 401 })
-  }
-
-  const db = createAdminClient()
-
+export const POST = apiHandler(async (request, { user, db, log }) => {
   const body = await request.json()
   const { company_id, ...accountData } = body
 
@@ -98,8 +80,9 @@ export async function POST(request: Request) {
     .single() as { data: any; error: any }
 
   if (error) {
+    log.error("Failed to create bank account", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
   return NextResponse.json(data, { status: 201 })
-}
+})

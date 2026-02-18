@@ -508,9 +508,11 @@ function CashFlowWidget({
 function VATWidget({
   vat,
   loading,
+  vatPeriod,
 }: {
   vat: VATObligation | null
   loading: boolean
+  vatPeriod?: "mesacne" | "stvrtrocne" | null
 }) {
   if (loading || !vat) {
     return (
@@ -523,7 +525,7 @@ function VATWidget({
     )
   }
 
-  const dphDeadline = calculateNextDPHDeadline("mesacne")
+  const dphDeadline = calculateNextDPHDeadline(vatPeriod || "mesacne")
 
   return (
     <Card>
@@ -961,7 +963,7 @@ export default function DashboardPage() {
       <CashFlowWidget key="cash-flow" cashFlow={data.cashFlow} loading={loading} />
     ),
     "vat-obligation": (
-      <VATWidget key="vat-obligation" vat={data.vat} loading={loading} />
+      <VATWidget key="vat-obligation" vat={data.vat} loading={loading} vatPeriod={activeCompany?.vat_period} />
     ),
     "account-balances": (
       <AccountBalancesWidget key="account-balances" accounts={data.accounts} loading={loading} />
