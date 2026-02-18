@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
-import { sendEmail } from "@/lib/email/send"
-import { invoiceEmailTemplate } from "@/lib/email/templates"
+import { sendInvoiceEmail } from "@/lib/notifications/email-sender"
 
 // POST /api/invoices/:id/send - Send invoice via email to the contact
 export async function POST(
@@ -57,26 +56,44 @@ export async function POST(
     return NextResponse.json({ error: "Spoločnosť nenájdená" }, { status: 500 })
   }
 
-  // Generate email HTML
-  const html = invoiceEmailTemplate(invoice, company)
+  try {
+    // Queue the email for reliable delivery
+    const queueId = await sendInvoiceEmail({
+      invoice: {
+        id: invoice.id,
+        number: invoice.number,
+        total: invoice.total_amount || invoice.total || 0,
+        currency: invoice.currency,
+        issue_date: invoice.issue_date,
+        due_date: invoice.due_date,
+        customer_name: invoice.customer_name,
+        contact: invoice.contact,
+      },
+      company: {
+        id: company.id,
+        name: company.name,
+        email: company.email,
+        phone: company.phone,
+      },
+      recipientEmail: contactEmail,
+    })
 
-  // Send the email
-  const result = await sendEmail({
-    to: contactEmail,
-    subject: `Faktúra č. ${invoice.number} od ${company.name}`,
-    html,
-  })
+    // Update invoice status to sent
+    await db
+      .from("invoices")
+      .update({ status: "odoslana" })
+      .eq("id", invoice.id)
 
-  if (!result.success) {
+    return NextResponse.json({
+      success: true,
+      message: `Faktúra bola zaradená na odoslanie na ${contactEmail}`,
+      queueId,
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Neznáma chyba"
     return NextResponse.json(
-      { error: "Nepodarilo sa odoslať email", details: result.error },
+      { error: "Nepodarilo sa zaradiť email do fronty", details: message },
       { status: 500 }
     )
   }
-
-  return NextResponse.json({
-    success: true,
-    message: `Faktúra bola odoslaná na ${contactEmail}`,
-    dev: (result as any).dev || false,
-  })
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { sendReminderEmail } from "@/lib/notifications/email-sender"
 
 export async function GET(request: Request) {
   // Verify cron secret
@@ -12,9 +13,12 @@ export async function GET(request: Request) {
   const db = createAdminClient()
 
   // Get all companies with reminders enabled
-  const { data: companies } = await (db.from("companies") as any).select("id").is("deleted_at", null)
+  const { data: companies } = await (db.from("companies") as any)
+    .select("id, name, email, phone")
+    .is("deleted_at", null)
 
   let totalReminders = 0
+  let emailsQueued = 0
 
   for (const company of (companies || [])) {
     // Check company settings for reminder config
@@ -31,7 +35,7 @@ export async function GET(request: Request) {
 
     // Get overdue invoices
     const { data: overdueInvoices } = await (db.from("invoices") as any)
-      .select("id, number, due_date, total, paid_amount, contact_id, customer_name, customer_email")
+      .select("id, number, due_date, total_amount, paid_amount, contact_id, customer_name, customer_email, currency, issue_date, contact:contacts(id, name, email)")
       .eq("company_id", company.id)
       .in("status", ["odoslana", "ciastocne_uhradena", "po_splatnosti"])
       .lt("due_date", new Date().toISOString().split("T")[0])
@@ -57,29 +61,61 @@ export async function GET(request: Request) {
 
       if (existing && existing.length > 0) continue
 
-      // Create reminder
+      const contactEmail = invoice.contact?.email || invoice.customer_email
+      const contactName = invoice.contact?.name || invoice.customer_name || "Neznámy"
+
+      // Create reminder record
       await (db.from("reminders") as any).insert({
         company_id: company.id,
         invoice_id: invoice.id,
         level,
         notes: `Automatická upomienka úroveň ${level} - ${daysOverdue} dní po splatnosti`,
         sent_at: new Date().toISOString(),
-        sent_to: invoice.customer_email || "",
+        sent_to: contactEmail || "",
       })
 
-      // Update invoice status to po_splatnosti if not already
-      if (invoice.status !== "po_splatnosti") {
-        await (db.from("invoices") as any)
-          .update({ status: "po_splatnosti" })
-          .eq("id", invoice.id)
+      // Send email reminder via queue if contact has email
+      if (contactEmail) {
+        try {
+          await sendReminderEmail({
+            invoice: {
+              id: invoice.id,
+              number: invoice.number,
+              total: invoice.total_amount || 0,
+              currency: invoice.currency,
+              issue_date: invoice.issue_date,
+              due_date: invoice.due_date,
+              customer_name: invoice.customer_name,
+              contact: invoice.contact,
+            },
+            company: {
+              id: company.id,
+              name: company.name,
+              email: company.email,
+              phone: company.phone,
+            },
+            recipientEmail: contactEmail,
+            daysOverdue,
+            level,
+          })
+          emailsQueued++
+        } catch {
+          console.error(`[CRON] Failed to queue reminder for invoice ${invoice.number}`)
+        }
       }
 
-      // Create notification
+      // Update invoice status to po_splatnosti if not already
+      await (db.from("invoices") as any)
+        .update({ status: "po_splatnosti" })
+        .eq("id", invoice.id)
+        .neq("status", "po_splatnosti")
+
+      // Create in-app notification
       await (db.from("notifications") as any).insert({
         company_id: company.id,
         type: "invoice_overdue",
         title: `Upomienka úroveň ${level}`,
-        message: `Faktúra ${invoice.number} je ${daysOverdue} dní po splatnosti (${invoice.customer_name})`,
+        message: `Faktúra ${invoice.number} je ${daysOverdue} dní po splatnosti (${contactName})`,
         link: `/invoices`,
       })
 
@@ -87,5 +123,9 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({ success: true, reminders_created: totalReminders })
+  return NextResponse.json({
+    success: true,
+    reminders_created: totalReminders,
+    emails_queued: emailsQueued,
+  })
 }
