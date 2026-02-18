@@ -1,0 +1,22 @@
+-- Enums pre celý systém
+CREATE TYPE business_type AS ENUM ('sro', 'as', 'szco', 'druzstvo', 'ine');
+CREATE TYPE accounting_type AS ENUM ('podvojne', 'jednoduche');
+CREATE TYPE size_category AS ENUM ('mikro', 'mala', 'stredna', 'velka');
+CREATE TYPE user_role AS ENUM ('admin', 'uctovnik', 'fakturant', 'mzdar', 'skladnik', 'readonly');
+CREATE TYPE fiscal_year_status AS ENUM ('otvoreny', 'v_zavierke', 'uzavrety');
+CREATE TYPE audit_action AS ENUM ('INSERT', 'UPDATE', 'DELETE');
+CREATE TYPE vat_period_type AS ENUM ('mesacne', 'stvrtrocne');
+CREATE TYPE invoice_type AS ENUM ('vydana', 'prijata', 'zalohova', 'dobropis', 'proforma');
+CREATE TYPE invoice_status AS ENUM ('draft', 'odoslana', 'uhradena', 'ciastocne_uhradena', 'po_splatnosti', 'stornovana');
+CREATE TYPE journal_entry_type AS ENUM ('FA', 'PFA', 'ID', 'BV', 'PPD', 'VPD');
+CREATE TYPE journal_entry_status AS ENUM ('draft', 'zauctovany');
+CREATE TYPE entry_side AS ENUM ('MD', 'D');
+CREATE TYPE contact_type AS ENUM ('odberatel', 'dodavatel', 'oba');
+CREATE TYPE document_type AS ENUM ('faktura', 'blocok', 'bankovy_vypis', 'zmluva', 'ine');
+CREATE TYPE cash_transaction_type AS ENUM ('prijem', 'vydaj');
+CREATE TYPE asset_status AS ENUM ('aktivny', 'vyradeny');
+CREATE TYPE depreciation_method AS ENUM ('rovnomerny', 'zrychleny');
+CREATE TYPE stock_movement_type AS ENUM ('prijemka', 'vydajka', 'prevodka', 'inventura');
+CREATE TYPE tax_return_type AS ENUM ('DPH', 'KV_DPH', 'SV', 'DPPO', 'DPFO', 'mesacny_prehlad', 'rocne_hlasenie', 'OSS', 'Intrastat');
+CREATE TYPE tax_return_status AS ENUM ('draft', 'finalny', 'podany');
+CREATE TYPE tax_return_variant AS ENUM ('riadne', 'opravne', 'dodatocne');
